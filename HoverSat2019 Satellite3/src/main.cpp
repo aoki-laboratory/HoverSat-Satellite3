@@ -25,8 +25,8 @@
 #define   TIMER_INTERRUPT     10      // ms
 #define   LCD
 #define   STEPMOTOR_I2C_ADDR  0x70
-#define   STEP_PER_LENGTH     0.575  // 230 / 400 
-#define   ONE_ROTATION_LENGTH 230
+#define   STEP_PER_LENGTH     0.1963  // 230 / 400 
+#define   ONE_ROTATION_LENGTH 78.5
 
 #define BufferRecords 16
 #define STEPPER_BUFFER  80
@@ -997,7 +997,7 @@ void bluetooth_tx(void) {
     case 0:
       delay(30);
       bts.print("\n\n\n\n\n\n");
-      bts.print(" HoverSat Satellite1 (M5Stack version) "
+      bts.print(" HoverSat Satellite3 (M5Stack version) "
                          "Test Program Ver1.20\n");
       bts.print("\n");
       bts.print(" Satellite control\n");
