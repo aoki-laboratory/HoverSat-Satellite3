@@ -86,8 +86,10 @@ int bts_index = 0;
 
 // Your WiFi credentials.
 // Set password to "" for open networks.
-char ssid[] = "Buffalo-G-0CBA";
-char pass[] = "hh4aexcxesasx";
+//char ssid[] = "Buffalo-G-0CBA";
+//char pass[] = "hh4aexcxesasx";
+char ssid[] = "X1Extreme-Hotspot";
+char pass[] = "5]6C458w";
 //char ssid[] = "Macaw";
 //char pass[] = "1234567890";
 
@@ -128,6 +130,11 @@ static volatile int bufferIndex[2] = {0, 0};
 // MPU9250
 MPU9250 IMU; 
 
+float accelBiasX = 0;
+float accelBiasY = 0;
+float accelBiasZ = 0;
+float gyroBiasZ = 0;
+
 // DuctedFan
 static const int DuctedFanPin = 15;
 Servo DuctedFan;
@@ -148,7 +155,7 @@ unsigned int ex_length = 2000;
 unsigned int ex_velocity = 200;
 unsigned int ex_accel = 5;
 unsigned char wait = 5;
-unsigned char limit_flag = 1;
+unsigned char dir_flag = 1;
 unsigned char ssid_pattern = 0;
 
 
@@ -225,7 +232,7 @@ void setup() {
   // timeSet
   getTimeFromNTP();
   getTime();
-  fname_buff  = "/log/Satellite1_log_"
+  fname_buff  = "/log/Satellite3_log_"
               +(String)(timeinfo.tm_year + 1900)
               +"_"+(String)(timeinfo.tm_mon + 1)
               +"_"+(String)timeinfo.tm_mday
@@ -369,6 +376,8 @@ void loop() {
     bts.print(", ");
     bts.print(IMU.ay);
     bts.print(", ");
+    bts.print(IMU.az);
+    bts.print(", ");
     bts.println(IMU.gz);
     telemetry_flag = false;
   }
@@ -467,9 +476,12 @@ void loop() {
       time_stepper = time_ms;
       stepper_pattern = 0;
       inc_flag = true; 
-      stepper( ex_length, ex_velocity, ex_accel );
+      if( dir_flag == 1 ) {
+        stepper( ex_length, ex_velocity, ex_accel );
+      } else {
+        stepper( ex_length*-1, ex_velocity, ex_accel );
+      }
       pattern = 116;
-      //tx_pattern = 11;
       log_flag = true;
       time_buff2 = millis();
       break;
@@ -493,30 +505,8 @@ void loop() {
       if( millis() - time_buff2 >= wait*1000 ) {
         pattern = 119;
         time_stepper = time_ms;
-        stepper_pattern = 4;
-        break;
-      }
-      break;
-
-    case 119:
-      //( length, velocity, accel )
-      inc_flag = true;
-      stepper( ex_length*-1-1000, ex_velocity, ex_accel  );
-      pattern = 120;
-      time_buff2 = millis();
-      break;
-
-    case 120:   
-      if( millis() - time_buff2 >= 1000 ) {
-        pattern = 121;
-        break;
-      }
-      break;
-
-    case 121:
-      if( stepper_enable_status==1 ) {
         time_buff2 = millis();
-        pattern = 131;
+        stepper_pattern = 131;
         break;
       }
       break;
@@ -570,44 +560,20 @@ void loop() {
     pattern = 21;
   }
 
-  if( limit_flag == 1 ) {
-    if(Limit1State==0 && Limit2State==0 ) {
-      if(pattern == 13 || pattern == 23) {
-        //SendByte(STEPMOTOR_I2C_ADDR, '!');
-        SendByte(STEPMOTOR_I2C_ADDR, 0x18);
-        delay(1000);
-        SendCommand(STEPMOTOR_I2C_ADDR, "$X");
-        pattern = 0;
-      }
-      if(pattern == 121) {
-        //SendByte(STEPMOTOR_I2C_ADDR, '!');
-        SendByte(STEPMOTOR_I2C_ADDR, 0x18);
-        delay(1000);
-        SendCommand(STEPMOTOR_I2C_ADDR, "$X");
-        time_buff2 = millis();
-        pattern = 131;
-        stepper_pattern = 10;
-        current_accel = 0;
-        current_velocity = 0;
-        current_length = 0;
-      }
-    }
-  }
-
   if (IMU.readByte(MPU9250_ADDRESS, INT_STATUS) & 0x01) {
     IMU.readAccelData(IMU.accelCount);
     IMU.getAres();
 
-    IMU.ax = (float)IMU.accelCount[0] * IMU.aRes;
-    IMU.ay = (float)IMU.accelCount[1] * IMU.aRes;
-    IMU.az = (float)IMU.accelCount[2] * IMU.aRes;
+    IMU.ax = (float)IMU.accelCount[0] * IMU.aRes - accelBiasX;
+    IMU.ay = (float)IMU.accelCount[1] * IMU.aRes - accelBiasY;
+    IMU.az = (float)IMU.accelCount[2] * IMU.aRes - accelBiasZ;
 
     IMU.readGyroData(IMU.gyroCount);  // Read the x/y/z adc values
     IMU.getGres();
 
     // Calculate the gyro value into actual degrees per second
     // This depends on scale being set
-    IMU.gz = (float)IMU.gyroCount[2] * IMU.gRes;
+    IMU.gz = (float)IMU.gyroCount[2] * IMU.gRes - gyroBiasZ;
   }
 
 }
@@ -783,7 +749,7 @@ void eeprom_write(void) {
   EEPROM.write(11, (ex_accel>>16 & 0xFF));
   EEPROM.write(12, (ex_accel>>24 & 0xFF));
   EEPROM.write(13, wait);
-  EEPROM.write(14, limit_flag);
+  EEPROM.write(14, dir_flag);
   EEPROM.commit();
 }
 
@@ -795,7 +761,7 @@ void eeprom_read(void) {
     ex_velocity = EEPROM.read(5) + (EEPROM.read(6)<<8) + (EEPROM.read(7)<<16) + (EEPROM.read(8)<<24);
     ex_accel = EEPROM.read(9) + (EEPROM.read(10)<<8) + (EEPROM.read(11)<<16) + (EEPROM.read(12)<<24);
     wait = EEPROM.read(13);
-    limit_flag = EEPROM.read(14);
+    dir_flag = EEPROM.read(14);
 }
 
 
@@ -847,9 +813,16 @@ void bluetooth_rx(void) {
         file.print(",");
         file.print("IMUaY [G]");
         file.print(",");
+        file.print("IMUaZ [G]");
+        file.print(",");
         file.print("IMUgZ [deg/s]");
         file.println(",");
         file.close();
+
+        accelBiasX = IMU.ax;
+        accelBiasY = IMU.ay;
+        accelBiasZ = IMU.az - 1;
+        gyroBiasZ = IMU.gz;
 
         if( current_time >= 52 ) {   
           pattern = 112;
@@ -970,7 +943,7 @@ void bluetooth_rx(void) {
         break;
 
       case 46:
-        limit_flag = rx_val;
+        dir_flag = rx_val;
         eeprom_write();
         tx_pattern = 0;
         rx_pattern = 0;
@@ -1014,20 +987,20 @@ void bluetooth_tx(void) {
       bts.print(" 31 : DuctedFan Output [");
       bts.print(hover_val);
       bts.print("%]\n");
-      bts.print(" 32 : Extension length [");
+      bts.print(" 32 : Moving Distance [");
       bts.print(ex_length);
       bts.print("mm]\n");
-      bts.print(" 33 : Extension velocity [");
+      bts.print(" 33 : Moving Speed [");
       bts.print(ex_velocity);
       bts.print("mm/s]\n");
-      bts.print(" 34 : Extension Accel [");
+      bts.print(" 34 : Movement Acceleration [");
       bts.print(ex_accel);
       bts.print("mm/s^2]\n");
       bts.print(" 35 : Sequence Wait [");
       bts.print(wait);
       bts.print("s]\n");
-      bts.print(" 36 : LimitSwitch Enable [");
-      bts.print(limit_flag);
+      bts.print(" 36 : Direction of movement [");
+      bts.print(dir_flag);
       bts.print("]\n");
       
       bts.print("\n");
